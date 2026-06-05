@@ -116,7 +116,14 @@ user_input
 - 保留 remote OpenAI-compatible API 介面
 - 可由 API base URL 讀取 `/v1/models`
 
-### 8. 本地優先
+### 8. 語音整合 (ASR + TTS)
+
+- 本地語音辨識 (ASR)：使用 sherpa-onnx + Paraformer 模型，按壓麥克風按鈕錄音，放開即辨識
+- 本地語音合成 (TTS)：使用 sherpa-onnx + VITS 模型，LLM 回應自動朗讀
+- 推持發話 (Push-to-Talk)：長按 🎤 錄音，放開開始辨識，不干擾鍵盤輸入
+- 所有語音模型均在本地執行，不需網路連線
+
+### 9. 本地優先
 
 - 預設走本地模型
 - 遠端 API 只保留介面，不綁定單一服務商
@@ -147,9 +154,11 @@ user_input
 
 大致分工如下：
 
-- `AiAgentTalkBox.cs`：聊天 UI 入口
+- `AiAgentTalkBox.cs`：聊天 UI 入口（整合語音）
 - `Chat/AiChatSkills.cs`：ChatPipeline 與各 Skill 實作
 - `Chat/AiChatModels.cs`：pipeline 使用的資料模型
+- `VoiceService.cs`：語音辨識 (ASR) 與語音合成 (TTS) 封裝
+- `VoiceLogger.cs`：語音偵錯日誌
 - `AiAgentSkillExecutor.cs`：工具執行入口
 - `AiAgentMemoryStore.cs`：結構化記憶存取
 - `OllamaAgentClient.cs`：本地模型生成
@@ -164,7 +173,12 @@ user_input
 - .NET SDK
 - `Ollama`（建議，作為本地模型 provider）
 
-如果要使用完整外部能力，還需要自行準備：
+### 語音模型（放置於 `C:\model\`）
+
+- ASR：[sherpa-onnx-paraformer-zh-2023-09-14](https://github.com/k2-fsa/sherpa-onnx/releases)
+- TTS：[vits-zh-aishell3](https://github.com/k2-fsa/sherpa-onnx/releases)
+
+### 外部 API（選擇性）
 
 - Google Calendar OAuth 憑證
 - 中央氣象署 API Key
