@@ -55,10 +55,10 @@ internal sealed class VoiceService : IDisposable
 
     public void InitializeTts()
     {
-        var modelPath = Path.Combine(ModelDir, "vits-zh-aishell3", "vits-aishell3.onnx");
-        var tokensPath = Path.Combine(ModelDir, "vits-zh-aishell3", "tokens.txt");
-        var lexiconPath = Path.Combine(ModelDir, "vits-zh-aishell3", "lexicon.txt");
-        var ruleFstPath = Path.Combine(ModelDir, "vits-zh-aishell3", "rule.far");
+        var modelDir = Path.Combine(ModelDir, "vits-zh-aishell3");
+        var modelPath = Path.Combine(modelDir, "vits-aishell3.onnx");
+        var tokensPath = Path.Combine(modelDir, "tokens.txt");
+        var lexiconPath = Path.Combine(modelDir, "lexicon.txt");
 
         if (!File.Exists(modelPath) || !File.Exists(tokensPath))
         {
@@ -79,7 +79,8 @@ internal sealed class VoiceService : IDisposable
             config.Model.NumThreads = 2;
             config.Model.Provider = "cpu";
             config.Model.Debug = 0;
-            config.RuleFsts = ruleFstPath;
+            config.RuleFsts = $"{modelDir}/phone.fst,{modelDir}/date.fst,{modelDir}/number.fst";
+            config.RuleFars = $"{modelDir}/rule.far";
             config.MaxNumSentences = 1;
             _tts = new OfflineTts(config);
             VoiceLogger.Log($"[InitTTS] TTS 載入完成");
@@ -241,7 +242,7 @@ internal sealed class VoiceService : IDisposable
                 VoiceLogger.Log($"[TTS] 合成完成，儲存至 {tempFile}");
 
                 using var reader = new AudioFileReader(tempFile);
-                using var output = new WaveOutEvent();
+                using var output = new NAudio.Wave.DirectSoundOut();
                 var mre = new ManualResetEvent(false);
                 output.PlaybackStopped += (_, _) => mre.Set();
                 output.Init(reader);
