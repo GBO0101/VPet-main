@@ -55,8 +55,8 @@ internal sealed class VoiceService : IDisposable
 
     public void InitializeTts()
     {
-        var modelDir = Path.Combine(ModelDir, "vits-zh-aishell3");
-        var modelPath = Path.Combine(modelDir, "vits-aishell3.onnx");
+        var modelDir = Path.Combine(ModelDir, "vits-zh-hf-fanchen-C");
+        var modelPath = Path.Combine(modelDir, "vits-zh-hf-fanchen-C.onnx");
         var tokensPath = Path.Combine(modelDir, "tokens.txt");
         var lexiconPath = Path.Combine(modelDir, "lexicon.txt");
 
@@ -80,10 +80,9 @@ internal sealed class VoiceService : IDisposable
             config.Model.Provider = "cpu";
             config.Model.Debug = 0;
             config.RuleFsts = $"{modelDir}/phone.fst,{modelDir}/date.fst,{modelDir}/number.fst";
-            config.RuleFars = $"{modelDir}/rule.far";
             config.MaxNumSentences = 1;
             _tts = new OfflineTts(config);
-            VoiceLogger.Log($"[InitTTS] TTS 載入完成");
+            VoiceLogger.Log($"[InitTTS] TTS 載入完成 (fanchen-C)");
         }
         catch (Exception ex)
         {
@@ -232,7 +231,7 @@ internal sealed class VoiceService : IDisposable
             {
                 var genConfig = new SherpaOnnx.OfflineTtsGenerationConfig
                 {
-                    Sid = 66,
+                    Sid = 20,
                     Speed = 1.0f,
                     SilenceScale = 0.2f
                 };
