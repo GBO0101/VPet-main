@@ -17,6 +17,11 @@ internal sealed class AiAgentTalkBox : TalkBox
     private readonly PomodoroService pomodoroService;
     private readonly ShortTermMemorySkill shortTermMemorySkill = new();
     private readonly VoiceService voiceService = new();
+    private readonly ScreenCaptureService screenCapture = new();
+    private readonly ScreenAnalysisService screenAnalysis = new();
+    private string lastScreenDescription = "";
+    private DateTime lastProactiveAt = DateTime.MinValue;
+    private bool isInConversation;
 
     public AiAgentTalkBox(MainPlugin mainPlugin, OpenAiAgentClient openAiClient, OllamaAgentClient ollamaClient, CalendarReminderService reminderService, AiAgentPetStatusBuilder petStatusBuilder, PomodoroService pomodoroService)
         : base(mainPlugin)
@@ -43,10 +48,86 @@ internal sealed class AiAgentTalkBox : TalkBox
                 btnMic.ToolTip = voiceService.IsAsrReady ? "\u6309\u4F4F\u8AAA\u8A71" : "\u8A9E\u97F3\u6A21\u7D44\u8F09\u5165\u5931\u6557";
                 VoiceLogger.Log("[Init] UI 按鈕已更新");
             });
+
+            if (screenAnalysis.IsConfigured)
+                StartScreenAwareness();
         });
     }
 
     public override string APIName => "AI Agent";
+
+    private void StartScreenAwareness()
+    {
+        Task.Run(async () =>
+        {
+            ScreenAwareLogger.Log("[ScreenAware] 開始背景螢幕感知");
+            while (true)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10));
+
+                try
+                {
+                    var t0 = DateTime.Now;
+                    var base64 = screenCapture.CaptureAsBase64();
+                    ScreenAwareLogger.Log($"[Capture] 截圖完成, size={base64.Length} bytes, 耗時={(DateTime.Now - t0).TotalMilliseconds:F0}ms");
+
+                    var description = await screenAnalysis.AnalyzeAsync(base64, CancellationToken.None);
+                    ScreenAwareLogger.Log($"[Analysis] 分析結果: \"{description}\"");
+
+                    if (string.IsNullOrWhiteSpace(description))
+                    {
+                        ScreenAwareLogger.Log("[Skip] 分析結果為空");
+                        continue;
+                    }
+                    if (description == "看起來沒什麼特別的")
+                    {
+                        ScreenAwareLogger.Log("[Skip] 畫面無重要活動");
+                        continue;
+                    }
+
+                    var isSame = description.Equals(lastScreenDescription, StringComparison.Ordinal);
+                    lastScreenDescription = description;
+
+                    if (isSame)
+                    {
+                        ScreenAwareLogger.Log("[Skip] 畫面描述與上次相同");
+                        continue;
+                    }
+
+                    var timeSinceLastProactive = DateTime.Now - lastProactiveAt;
+                    if (timeSinceLastProactive.TotalMinutes < 5)
+                    {
+                        ScreenAwareLogger.Log($"[Skip] 距上次主動回應僅 {timeSinceLastProactive.TotalMinutes:F1} 分鐘");
+                        continue;
+                    }
+                    if (isInConversation)
+                    {
+                        ScreenAwareLogger.Log("[Skip] 正在對話中");
+                        continue;
+                    }
+
+                    ScreenAwareLogger.Log($"[Change] 畫面變化: {description}");
+                    var proactiveMsg = await screenAnalysis.GenerateProactiveMessageAsync(description, CancellationToken.None);
+                    ScreenAwareLogger.Log($"[Proactive] 生成回應: \"{proactiveMsg}\"");
+
+                    if (!string.IsNullOrWhiteSpace(proactiveMsg))
+                    {
+                        lastProactiveAt = DateTime.Now;
+                        MainPlugin.MW.Dispatcher.InvokeAsync(() =>
+                        {
+                            DisplayThinkToSayRnd(proactiveMsg, "AI Agent");
+                        });
+                        voiceService.Speak(proactiveMsg);
+                        ScreenAwareLogger.Log($"[Proactive] 已顯示+朗讀: {proactiveMsg}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    ScreenAwareLogger.LogError("[ScreenAware]", ex);
+                }
+            }
+        });
+    }
 
     public override void OnMicButtonDown()
     {
@@ -77,6 +158,7 @@ internal sealed class AiAgentTalkBox : TalkBox
 
     public override void Responded(string text)
     {
+        isInConversation = true;
         DisplayThink();
         try
         {
@@ -98,6 +180,10 @@ internal sealed class AiAgentTalkBox : TalkBox
             var errorMsg = "\u6211\u7684 AI \u52a9\u624b\u51fa\u932f\u4e86\uff1a" + ex.Message;
             DisplayThinkToSayRnd(errorMsg, APIName);
             voiceService.Speak(errorMsg);
+        }
+        finally
+        {
+            isInConversation = false;
         }
     }
 

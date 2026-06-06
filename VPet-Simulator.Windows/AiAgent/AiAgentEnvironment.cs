@@ -19,6 +19,7 @@ internal static class AiAgentEnvironment
     public const string GoogleRefreshToken = "VPET_GOOGLE_REFRESH_TOKEN";
     public const string CwaApiKey = "VPET_CWA_API_KEY";
     public const string DefaultLocation = "VPET_DEFAULT_LOCATION";
+    public const string VisionModel = "VPET_VISION_MODEL";
 
     public static string Provider
     {
