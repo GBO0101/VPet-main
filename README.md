@@ -30,6 +30,7 @@
 - 桌寵人格已抽離為獨立 `PersonalitySkill`
 - 回覆風格會依情緒、意圖、模式調整
 - 避免每句都硬裝可愛，改成偏自然、口語、朋友感
+- 支援螢幕感知（Screen Awareness）：桌寵可主動根據使用者目前桌面活動產生自然回應
 
 ### 2. 顯式 ChatPipeline
 
@@ -121,12 +122,15 @@ user_input
 - 本地語音辨識 (ASR)：使用 sherpa-onnx + Paraformer 模型，按壓麥克風按鈕錄音，放開即辨識
 - 本地語音合成 (TTS)：使用 sherpa-onnx + VITS 模型，LLM 回應自動朗讀
 - 推持發話 (Push-to-Talk)：長按 🎤 錄音，放開開始辨識，不干擾鍵盤輸入
+- TTS 模型使用 `vits-zh-hf-fanchen-C`（187 位發音人），預設 Speaker ID = 20，聲音更自然甜美
+- 音訊輸出改用 `DirectSoundOut`，避免 `WaveOutEvent` 在部分環境的 `BadDeviceId` 錯誤
 - 所有語音模型均在本地執行，不需網路連線
 
 ### 9. 本地優先
 
 - 預設走本地模型
 - 遠端 API 只保留介面，不綁定單一服務商
+- 螢幕感知 (Screen Awareness) 使用本地 Ollama 多模態視覺模型（如 `llava`）分析桌面畫面，不需要雲端 API
 - 適合想把桌寵當成個人桌面助手，而不是單純雲端聊天視窗的人
 
 ## 主要改造重點
@@ -142,6 +146,8 @@ user_input
 - 將 Ollama 模型選擇改成讀本機安裝清單
 - 將天氣來源改接中央氣象署
 - 新增地震快訊、桌寵警示動作與系統通知
+- 整合本機語音管線 (ASR + TTS)：按壓發話、自動朗讀回應
+- 新增螢幕感知 (Screen Awareness)：定時截圖 → Ollama 多模態模型分析 → 桌寵主動回應
 
 ## 專案結構
 
@@ -154,18 +160,24 @@ user_input
 
 大致分工如下：
 
-- `AiAgentTalkBox.cs`：聊天 UI 入口（整合語音）
+- `AiAgentTalkBox.cs`：聊天 UI 入口（整合語音 + 螢幕感知定時器）
 - `Chat/AiChatSkills.cs`：ChatPipeline 與各 Skill 實作
 - `Chat/AiChatModels.cs`：pipeline 使用的資料模型
-- `VoiceService.cs`：語音辨識 (ASR) 與語音合成 (TTS) 封裝
+- `Chat/AiStructuredMemory.cs`：結構化記憶 Schema
+- `VoiceService.cs`：語音辨識 (ASR) 與語音合成 (TTS) 封裝（sherpa-onnx + DirectSoundOut）
 - `VoiceLogger.cs`：語音偵錯日誌
+- `ScreenCaptureService.cs`：螢幕截圖 (Graphics.CopyFromScreen) → base64 JPEG
+- `ScreenAnalysisService.cs`：截圖送 Ollama 多模態模型分析 + 生成桌寵主動回應
+- `ScreenAwareLogger.cs`：螢幕感知專用偵錯日誌
 - `AiAgentSkillExecutor.cs`：工具執行入口
+- `AiAgentEnvironment.cs`：環境變數定義與讀取
 - `AiAgentMemoryStore.cs`：結構化記憶存取
-- `OllamaAgentClient.cs`：本地模型生成
+- `OllamaAgentClient.cs`：本地 Ollama 模型生成
 - `OpenAiAgentClient.cs`：OpenAI-compatible remote API 生成
 - `WeatherSkillClient.cs`：天氣查詢
 - `EarthquakeSkillClient.cs`：地震查詢
 - `LocationSkillClient.cs`：位置解析
+- `PomodoroService.cs` / `PomodoroSession.cs`：番茄鐘實作
 
 ## 執行需求
 
@@ -176,7 +188,12 @@ user_input
 ### 語音模型（放置於 `C:\model\`）
 
 - ASR：[sherpa-onnx-paraformer-zh-2023-09-14](https://github.com/k2-fsa/sherpa-onnx/releases)
-- TTS：[vits-zh-aishell3](https://github.com/k2-fsa/sherpa-onnx/releases)
+- TTS：[vits-zh-hf-fanchen-C](https://github.com/k2-fsa/sherpa-onnx/releases)（預設 Speaker ID = 20）
+
+### 多模態視覺模型（選擇性，螢幕感知用）
+
+- Ollama 多模態模型，如 `llava:7b` 或 `qwen2-vl:7b`
+- 需設定環境變數 `VPET_VISION_MODEL`
 
 ### 外部 API（選擇性）
 
@@ -190,6 +207,7 @@ user_input
 ```text
 VPET_CWA_API_KEY
 VPET_DEFAULT_LOCATION
+VPET_VISION_MODEL
 VPET_REMOTE_API_BASE_URL
 VPET_REMOTE_API_KEY
 VPET_REMOTE_API_MODEL
@@ -199,6 +217,7 @@ VPET_REMOTE_API_MODEL
 
 - `VPET_CWA_API_KEY`：中央氣象署天氣 / 地震 API
 - `VPET_DEFAULT_LOCATION`：固定預設地點，例如 `臺中市`
+- `VPET_VISION_MODEL`：Ollama 多模態模型名稱（如 `llava:7b`），未設定時不啟動螢幕感知
 - `VPET_REMOTE_API_BASE_URL`：遠端 OpenAI-compatible API 位址
 - `VPET_REMOTE_API_KEY`：遠端 API 金鑰
 - `VPET_REMOTE_API_MODEL`：遠端模型 id
