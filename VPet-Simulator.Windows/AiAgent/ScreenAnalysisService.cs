@@ -42,13 +42,13 @@ internal sealed class ScreenAnalysisService
                 model = visionModel,
                 stream = false,
                 keep_alive = "10m",
-                options = new { num_predict = 64, temperature = 0.3 },
+                options = new { num_predict = 128, temperature = 0.3 },
                 messages = new object[]
                 {
                     new
                     {
                         role = "user",
-                        content = "用一句繁體中文簡短描述使用者在做什麼，20字以內。如果畫面看不出來或沒有重要活動，就說「看起來沒什麼特別的」。",
+                        content = "描述這張圖片中的人在電腦前做什麼，用一句繁體中文。如果看不出來就說「沒什麼特別的」。",
                         images = new[] { base64Image }
                     }
                 }
@@ -94,7 +94,7 @@ internal sealed class ScreenAnalysisService
                     new
                     {
                         role = "user",
-                        content = $"你是一隻可愛的桌寵。使用者正在：{screenDescription}\n請用桌寵的口吻，給一句簡短、自然、有溫度的回應或建議。不要問句，不要加表情符號，10秒以內能說完的長度。"
+                        content = $"你是一隻可愛的桌寵，偷偷看到使用者在：{screenDescription}\n請用桌寵的口吻，給一句簡短、自然、有溫度的回應或建議。不要問句，不要加表情符號，10秒以內能說完的長度。"
                     }
                 }
             };

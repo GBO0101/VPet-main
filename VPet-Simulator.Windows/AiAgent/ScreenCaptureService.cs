@@ -7,13 +7,23 @@ namespace VPet_Simulator.Windows.AiAgent;
 
 internal sealed class ScreenCaptureService
 {
+    public int CaptureWidth { get; set; } = 500;
+    public int CaptureHeight { get; set; } = 400;
+
     public string CaptureAsBase64()
     {
-        var bounds = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
-        using var bitmap = new Bitmap(bounds.Width, bounds.Height);
+        var cursor = System.Windows.Forms.Cursor.Position;
+        var screen = System.Windows.Forms.Screen.PrimaryScreen.Bounds;
+
+        var x = Math.Max(0, Math.Min(cursor.X - CaptureWidth / 2, screen.Width - CaptureWidth));
+        var y = Math.Max(0, Math.Min(cursor.Y - CaptureHeight / 2, screen.Height - CaptureHeight));
+        var width = Math.Min(CaptureWidth, screen.Width - x);
+        var height = Math.Min(CaptureHeight, screen.Height - y);
+
+        using var bitmap = new Bitmap(width, height);
         using (var g = Graphics.FromImage(bitmap))
         {
-            g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size);
+            g.CopyFromScreen(x, y, 0, 0, new Size(width, height));
         }
 
         using var ms = new MemoryStream();

@@ -19,6 +19,7 @@ internal sealed class AiAgentTalkBox : TalkBox
     private readonly VoiceService voiceService = new();
     private readonly ScreenCaptureService screenCapture = new();
     private readonly ScreenAnalysisService screenAnalysis = new();
+    private readonly WorkflowEngine workflowEngine;
     private string lastScreenDescription = "";
     private DateTime lastProactiveAt = DateTime.MinValue;
     private bool isInConversation;
@@ -32,6 +33,9 @@ internal sealed class AiAgentTalkBox : TalkBox
         this.petStatusBuilder = petStatusBuilder;
         this.pomodoroService = pomodoroService;
         skillExecutor = new AiAgentSkillExecutor(mainPlugin.MW, reminderService, petStatusBuilder, pomodoroService);
+        workflowEngine = new WorkflowEngine(mainPlugin.MW, reminderService, petStatusBuilder, pomodoroService);
+        workflowEngine.WorkflowExecuted += (name, trigger) =>
+            WorkflowLogger.Log($"[Integrate] Workflow 執行完成: {name}, 觸發源: {trigger}");
 
         voiceService.SpeechRecognized += OnSpeechRecognized;
         voiceService.RecordingStateChanged += OnRecordingStateChanged;
@@ -74,6 +78,11 @@ internal sealed class AiAgentTalkBox : TalkBox
                     var description = await screenAnalysis.AnalyzeAsync(base64, CancellationToken.None);
                     ScreenAwareLogger.Log($"[Analysis] 分析結果: \"{description}\"");
 
+                    if (!string.IsNullOrWhiteSpace(description))
+                        workflowEngine.TryMatchScreen(description);
+
+                    workflowEngine.CheckSchedule();
+
                     if (string.IsNullOrWhiteSpace(description))
                     {
                         ScreenAwareLogger.Log("[Skip] 分析結果為空");
@@ -113,7 +122,7 @@ internal sealed class AiAgentTalkBox : TalkBox
                     if (!string.IsNullOrWhiteSpace(proactiveMsg))
                     {
                         lastProactiveAt = DateTime.Now;
-                        MainPlugin.MW.Dispatcher.InvokeAsync(() =>
+                        var _ = MainPlugin.MW.Dispatcher.InvokeAsync(() =>
                         {
                             DisplayThinkToSayRnd(proactiveMsg, "AI Agent");
                         });
@@ -142,6 +151,7 @@ internal sealed class AiAgentTalkBox : TalkBox
 
     private void OnSpeechRecognized(object? sender, string text)
     {
+        WorkflowLogger.Log($"[Integrate] 收到語音: \"{text}\"");
         Task.Run(() => Responded(text));
     }
 
@@ -159,6 +169,14 @@ internal sealed class AiAgentTalkBox : TalkBox
     public override void Responded(string text)
     {
         isInConversation = true;
+
+        if (workflowEngine.TryMatchVoice(text))
+        {
+            WorkflowLogger.Log("[Integrate] 文字/語音被 workflow 攔截，不送 LLM");
+            isInConversation = false;
+            return;
+        }
+
         DisplayThink();
         try
         {
