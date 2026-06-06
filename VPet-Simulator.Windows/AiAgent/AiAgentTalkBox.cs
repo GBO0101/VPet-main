@@ -63,7 +63,7 @@ internal sealed class AiAgentTalkBox : TalkBox
             ScreenAwareLogger.Log("[ScreenAware] 開始背景螢幕感知");
             while (true)
             {
-                await Task.Delay(TimeSpan.FromSeconds(10));
+                await Task.Delay(TimeSpan.FromSeconds(60));
 
                 try
                 {
