@@ -1,14 +1,14 @@
 [
   {
     "Name": "開始寫程式",
-    "Description": "語音說「開始寫程式」→ 開 IDE + 啟動番茄鐘 + 桌寵鼓勵",
+    "Description": "說「開始寫程式」→ 開 IDE + 啟動番茄鐘 + 桌寵鼓勵",
     "Enabled": true,
     "Trigger": {
-      "Type": "Voice",
-      "VoiceCommand": "開始寫程式"
+      "Type": "Input",
+      "InputKeyword": "開始寫程式"
     },
     "Actions": [
-      { "Type": "LaunchProgram", "ProgramName": "code", "DelaySeconds": 0 },
+      { "Type": "LaunchProgram", "ProgramName": "notepad", "DelaySeconds": 0 },
       { "Type": "SendMessage", "Message": "好喔，一起專心寫程式吧！我幫你開了編輯器也啟動番茄鐘了～", "DelaySeconds": 2 },
       { "Type": "StartPomodoro", "PomodoroMinutes": 25, "DelaySeconds": 1 }
     ]
@@ -24,5 +24,5 @@
     "Actions": [
       { "Type": "SendMessage", "Message": "已經專心兩小時了，起來走走喝杯水吧！", "DelaySeconds": 0 }
     ]
-  },
+  }
 ]

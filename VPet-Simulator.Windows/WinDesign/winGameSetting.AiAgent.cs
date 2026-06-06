@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -15,6 +16,8 @@ namespace VPet_Simulator.Windows;
 public partial class winGameSetting
 {
     private const int AiAgentSettingsTabIndex = 5;
+    private bool isCapturingHotkey = false;
+    private string savedHotkeyBeforeCapture = "";
     private readonly OpenAiAgentClient aiOpenAiClient = new();
     private readonly OllamaAgentClient aiOllamaClient = new();
     private readonly GoogleCalendarClient aiCalendarClient = new();
@@ -55,11 +58,29 @@ public partial class winGameSetting
         dpAiReminderDate.SelectedDate = DateTime.Now.Date;
         tbAiReminderTime.Text = DateTime.Now.AddMinutes(5).ToString("HH:mm");
 
-        cbFeatureVoice.IsChecked = FeatureManager.IsVoiceEnabled;
+        cbFeatureVoiceInput.IsChecked = FeatureManager.IsVoiceInputEnabled;
+        cbFeatureVoiceOutput.IsChecked = FeatureManager.IsVoiceOutputEnabled;
         cbFeatureScreenAware.IsChecked = FeatureManager.IsScreenAwareEnabled;
         cbFeatureWorkflow.IsChecked = FeatureManager.IsWorkflowEnabled;
 
+        var intervalStr = AiAgentEnvironment.Get(AiAgentEnvironment.ScreenAwareInterval);
+        slAiScreenInterval.Value = int.TryParse(intervalStr, out var interval) ? interval : 60;
+
+        var visionModel = AiAgentEnvironment.Get(AiAgentEnvironment.VisionModel);
+        if (!string.IsNullOrWhiteSpace(visionModel))
+            cbAiVisionModel.Text = visionModel;
+
+        var hotkey = AiAgentEnvironment.Get(AiAgentEnvironment.HotkeyPushToTalk);
+        tbAiHotkeyPushToTalk.Text = hotkey;
+        if (!string.IsNullOrWhiteSpace(hotkey))
+            tbAiHotkeyStatus.Text = $"目前註冊：{hotkey}";
+        else
+            tbAiHotkeyStatus.Text = "無快捷鍵設定";
+
+        RefreshWorkflowList();
+
         RefreshAiAgentData();
+        RefreshDiyHotkeys();
     }
 
     private void SaveAiAgentSettings_Click(object sender, RoutedEventArgs e)
@@ -69,30 +90,56 @@ public partial class winGameSetting
 
     private void SaveAiAgentSettings(bool showMessage)
     {
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.AiProvider, GetSelectedAiProvider());
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaAutoStart, cbAiOllamaAutoStart.IsChecked == false ? "false" : "true");
+        var provider = GetSelectedAiProvider();
+        var ollamaAutoStart = cbAiOllamaAutoStart?.IsChecked == false ? "false" : "true";
 
-        FeatureManager.SetVoiceEnabled(cbFeatureVoice.IsChecked == true);
-        FeatureManager.SetScreenAwareEnabled(cbFeatureScreenAware.IsChecked == true);
-        FeatureManager.SetWorkflowEnabled(cbFeatureWorkflow.IsChecked == true);
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaUrl, tbAiOllamaUrl.Text.Trim());
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaModel, GetSelectedAiOllamaModel());
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiBaseUrl, tbAiRemoteApiBaseUrl.Text.Trim());
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiModel, GetSelectedAiRemoteApiModel());
+        var voiceInput = cbFeatureVoiceInput?.IsChecked == true;
+        var voiceOutput = cbFeatureVoiceOutput?.IsChecked == true;
+        var screenAware = cbFeatureScreenAware?.IsChecked == true;
+        var workflow = cbFeatureWorkflow?.IsChecked == true;
 
-        if (!string.IsNullOrWhiteSpace(pbAiOpenAiKey.Password))
-            AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiKey, pbAiOpenAiKey.Password);
+        var ollamaUrl = tbAiOllamaUrl?.Text.Trim() ?? "";
+        var ollamaModel = GetSelectedAiOllamaModel();
+        var remoteApiBaseUrl = tbAiRemoteApiBaseUrl?.Text.Trim() ?? "";
+        var remoteApiModel = GetSelectedAiRemoteApiModel();
+        var remoteApiKey = !string.IsNullOrWhiteSpace(pbAiOpenAiKey?.Password) ? pbAiOpenAiKey.Password : null;
+        var googleClientId = tbAiGoogleClientId?.Text.Trim() ?? "";
+        var googleClientSecret = !string.IsNullOrWhiteSpace(pbAiGoogleClientSecret?.Password) ? pbAiGoogleClientSecret.Password : null;
+        var interval = ((int?)slAiScreenInterval?.Value ?? 60).ToString();
+        var visionModel = cbAiVisionModel?.Text.Trim() ?? "";
+        var hotkey = tbAiHotkeyPushToTalk?.Text.Trim() ?? "";
 
-        AiAgentEnvironment.SetUser(AiAgentEnvironment.GoogleClientId, tbAiGoogleClientId.Text.Trim());
-
-        if (!string.IsNullOrWhiteSpace(pbAiGoogleClientSecret.Password))
-            AiAgentEnvironment.SetUser(AiAgentEnvironment.GoogleClientSecret, pbAiGoogleClientSecret.Password);
-
-        pbAiOpenAiKey.Clear();
-        pbAiGoogleClientSecret.Clear();
-        UpdateAiAgentStatus();
-        if (showMessage)
-            MessageBoxX.Show("設定已儲存。", "AI Agent");
+        Task.Run(() =>
+        {
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.AiProvider, provider);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaAutoStart, ollamaAutoStart);
+            FeatureManager.SetVoiceInputEnabled(voiceInput);
+            FeatureManager.SetVoiceOutputEnabled(voiceOutput);
+            FeatureManager.SetScreenAwareEnabled(screenAware);
+            FeatureManager.SetWorkflowEnabled(workflow);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaUrl, ollamaUrl);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaModel, ollamaModel);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiBaseUrl, remoteApiBaseUrl);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiModel, remoteApiModel);
+            if (remoteApiKey != null)
+                AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiKey, remoteApiKey);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.GoogleClientId, googleClientId);
+            if (googleClientSecret != null)
+                AiAgentEnvironment.SetUser(AiAgentEnvironment.GoogleClientSecret, googleClientSecret);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.ScreenAwareInterval, interval);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.VisionModel, visionModel);
+            AiAgentEnvironment.SetUser(AiAgentEnvironment.HotkeyPushToTalk, hotkey);
+        }).ContinueWith(_ =>
+        {
+            Dispatcher.Invoke(() =>
+            {
+                pbAiOpenAiKey?.Clear();
+                pbAiGoogleClientSecret?.Clear();
+                UpdateAiAgentStatus();
+                if (showMessage)
+                    MessageBoxX.Show("設定已儲存。", "AI Agent");
+            });
+        }, TaskContinuationOptions.OnlyOnRanToCompletion);
     }
 
     private async void TestAiAgent_Click(object sender, RoutedEventArgs e)
@@ -164,6 +211,7 @@ public partial class winGameSetting
             Dispatcher.Invoke(() =>
             {
                 ReplaceModelItems(cbAiOllamaModel, models, false);
+                ReplaceModelItems(cbAiVisionModel, models, true);
                 if (saveSelection)
                     AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaModel, GetSelectedAiOllamaModel());
             });
@@ -512,5 +560,386 @@ public partial class winGameSetting
         }
 
         comboBox.Text = selectedModel;
+    }
+
+    private void SlAiScreenInterval_ValueChanged(object? sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+    }
+
+    private void RefreshWorkflowList()
+    {
+        var workflows = new WorkflowStore().Load();
+        dgWorkflows.ItemsSource = workflows.Select(w => new WorkflowDisplayItem
+        {
+            Name = w.Name,
+            TriggerTypeDisplay = w.Trigger.Type switch
+            {
+                WorkflowTriggerType.Screen => "螢幕",
+                WorkflowTriggerType.Schedule => "排程",
+                WorkflowTriggerType.Input => "輸入",
+                _ => w.Trigger.Type.ToString()
+            },
+            TriggerSummary = w.Trigger.Type switch
+            {
+                WorkflowTriggerType.Screen => w.Trigger.ScreenKeyword,
+                WorkflowTriggerType.Schedule => w.Trigger.ScheduleCron,
+                WorkflowTriggerType.Input => w.Trigger.InputKeyword,
+                _ => ""
+            },
+            Enabled = w.Enabled,
+            ActionCount = w.Actions.Count,
+            Source = w
+        }).ToList();
+    }
+
+    private void DgWorkflows_SelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        var hasSelection = dgWorkflows.SelectedItem is WorkflowDisplayItem;
+        btnEditWorkflow.IsEnabled = hasSelection;
+        btnDeleteWorkflow.IsEnabled = hasSelection;
+    }
+
+    private void AddWorkflow_Click(object? sender, RoutedEventArgs e)
+    {
+        var editor = new winWorkflowEditor();
+        if (editor.ShowDialog() == true)
+        {
+            SaveAiAgentSettings(false);
+            RefreshWorkflowList();
+            ReloadWorkflowEngine();
+        }
+    }
+
+    private void EditWorkflow_Click(object? sender, RoutedEventArgs e)
+    {
+        if (dgWorkflows.SelectedItem is WorkflowDisplayItem item && item.Source != null)
+        {
+            var editor = new winWorkflowEditor(item.Source);
+            if (editor.ShowDialog() == true)
+            {
+                SaveAiAgentSettings(false);
+                RefreshWorkflowList();
+                ReloadWorkflowEngine();
+            }
+        }
+    }
+
+    private void DeleteWorkflow_Click(object? sender, RoutedEventArgs e)
+    {
+        if (dgWorkflows.SelectedItem is WorkflowDisplayItem item && item.Source != null)
+        {
+            var result = MessageBoxX.Show($"確定刪除流程「{item.Name}」？", "刪除流程", MessageBoxButton.YesNo);
+            if (result == MessageBoxResult.Yes)
+            {
+                var store = new WorkflowStore();
+                var workflows = store.Load();
+                workflows.RemoveAll(w => w.Name == item.Name);
+                store.Save(workflows);
+                SaveAiAgentSettings(false);
+                RefreshWorkflowList();
+                ReloadWorkflowEngine();
+            }
+        }
+    }
+
+    private void ReloadWorkflows_Click(object? sender, RoutedEventArgs e)
+    {
+        RefreshWorkflowList();
+        ReloadWorkflowEngine();
+    }
+
+    private static void ReloadWorkflowEngine()
+    {
+        if (Application.Current.MainWindow is MainWindow mw)
+        {
+            var talkBox = mw.TalkAPI.Find(x => x.APIName == "AI Agent") as AiAgentTalkBox;
+            talkBox?.ReloadWorkflows();
+        }
+    }
+
+    private void SampleWorkflow_Click(object? sender, RoutedEventArgs e)
+    {
+        var store = new WorkflowStore();
+        var workflows = store.Load();
+        var anyAdded = false;
+
+        if (!workflows.Any(w => w.Name.Equals("休息提醒", StringComparison.OrdinalIgnoreCase)))
+        {
+            workflows.Add(new WorkflowDefinition
+            {
+                Name = "休息提醒",
+                Description = "每2小時提醒休息",
+                Enabled = true,
+                Trigger = new WorkflowTrigger
+                {
+                    Type = WorkflowTriggerType.Schedule,
+                    ScheduleCron = "0 */2 * * *"
+                },
+                Actions = new List<WorkflowAction>
+                {
+                    new() { Type = WorkflowActionType.SendMessage, Message = "已經專心兩小時了，起來走走喝杯水吧！" }
+                }
+            });
+            anyAdded = true;
+        }
+
+        if (!workflows.Any(w => w.Name.Equals("開始寫程式", StringComparison.OrdinalIgnoreCase)))
+        {
+            workflows.Add(new WorkflowDefinition
+            {
+                Name = "開始寫程式",
+                Description = "說「開始寫程式」→ 開 IDE + 啟動番茄鐘 + 桌寵鼓勵",
+                Enabled = true,
+                Trigger = new WorkflowTrigger
+                {
+                    Type = WorkflowTriggerType.Input,
+                    InputKeyword = "開始寫程式"
+                },
+                Actions = new List<WorkflowAction>
+                {
+                    new() { Type = WorkflowActionType.LaunchProgram, ProgramName = "notepad" },
+                    new() { Type = WorkflowActionType.StartPomodoro, PomodoroMinutes = 25 },
+                    new() { Type = WorkflowActionType.SendMessage, Message = "好喔，一起專心寫程式吧！我幫你開了編輯器也啟動番茄鐘了～" }
+                }
+            });
+            anyAdded = true;
+        }
+
+        if (!workflows.Any(w => w.Name.Equals("螢幕偵測瀏覽器", StringComparison.OrdinalIgnoreCase)))
+        {
+            workflows.Add(new WorkflowDefinition
+            {
+                Name = "螢幕偵測瀏覽器",
+                Description = "螢幕分析出現「瀏覽器」時通知",
+                Enabled = true,
+                Trigger = new WorkflowTrigger
+                {
+                    Type = WorkflowTriggerType.Screen,
+                    ScreenKeyword = "瀏覽器"
+                },
+                Actions = new List<WorkflowAction>
+                {
+                    new() { Type = WorkflowActionType.ShowNotification, NotificationTitle = "螢幕偵測", NotificationBody = "桌寵偵測到您正在使用瀏覽器" }
+                }
+            });
+            anyAdded = true;
+        }
+
+        store.Save(workflows);
+        RefreshWorkflowList();
+        ReloadWorkflowEngine();
+
+        if (anyAdded)
+            MessageBoxX.Show("已新增範例流程（休息提醒、開始寫程式、螢幕偵測瀏覽器）。\n可編輯後調整觸發條件與動作。", "新增範例");
+        else
+            MessageBoxX.Show("所有範例流程已存在，無需重複新增。", "新增範例");
+    }
+
+    private async void ImportOllamaModel_Click(object? sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "GGUF 模型 (*.gguf)|*.gguf|所有檔案 (*.*)|*.*",
+            Title = "選擇 GGUF 模型檔案"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            var filePath = dialog.FileName;
+            var fileName = System.IO.Path.GetFileNameWithoutExtension(filePath);
+            var mw = Application.Current.MainWindow as MainWindow;
+            if (mw == null) return;
+            var inputBox = new winInputBox(mw, "匯入模型", $"將從檔案建立 Ollama 模型：\n{filePath}\n\n請輸入模型名稱：", fileName, false, false, false);
+            if (inputBox.ShowDialog() == true && !string.IsNullOrWhiteSpace(inputBox.TextBoxInput.Text))
+            {
+                var modelName = inputBox.TextBoxInput.Text.Trim();
+                await RunAiAgentTaskAsync(async token =>
+                {
+                    var modelfile = $"FROM {filePath}";
+                    var tempFile = System.IO.Path.GetTempFileName();
+                    System.IO.File.WriteAllText(tempFile, modelfile);
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = "ollama",
+                        Arguments = $"create {modelName} -f \"{tempFile}\"",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    };
+                    var proc = Process.Start(psi);
+                    if (proc != null)
+                    {
+                        var output = await proc.StandardOutput.ReadToEndAsync();
+                        var error = await proc.StandardError.ReadToEndAsync();
+                        proc.WaitForExit();
+                        System.IO.File.Delete(tempFile);
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (proc.ExitCode == 0)
+                            {
+                                MessageBoxX.Show($"模型「{modelName}」匯入成功。", "匯入模型");
+                                _ = RefreshLocalOllamaModelsAsync(saveSelection: false);
+                            }
+                            else
+                            {
+                                MessageBoxX.Show($"匯入失敗：{error}", "匯入模型");
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    private async void ImportVisionModel_Click(object? sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "GGUF 模型 (*.gguf)|*.gguf|所有檔案 (*.*)|*.*",
+            Title = "選擇 GGUF 模型檔案"
+        };
+        if (dialog.ShowDialog() == true)
+        {
+            var filePath = dialog.FileName;
+            var fileName = System.IO.Path.GetFileNameWithoutExtension(filePath);
+            var mw = Application.Current.MainWindow as MainWindow;
+            if (mw == null) return;
+            var inputBox = new winInputBox(mw, "匯入模型", $"將從檔案建立 Ollama 模型：\n{filePath}\n\n請輸入模型名稱：", fileName, false, false, false);
+            if (inputBox.ShowDialog() == true && !string.IsNullOrWhiteSpace(inputBox.TextBoxInput.Text))
+            {
+                var modelName = inputBox.TextBoxInput.Text.Trim();
+                await RunAiAgentTaskAsync(async token =>
+                {
+                    var modelfile = $"FROM {filePath}";
+                    var tempFile = System.IO.Path.GetTempFileName();
+                    System.IO.File.WriteAllText(tempFile, modelfile);
+                    var psi = new ProcessStartInfo
+                    {
+                        FileName = "ollama",
+                        Arguments = $"create {modelName} -f \"{tempFile}\"",
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    };
+                    var proc = Process.Start(psi);
+                    if (proc != null)
+                    {
+                        var output = await proc.StandardOutput.ReadToEndAsync();
+                        var error = await proc.StandardError.ReadToEndAsync();
+                        proc.WaitForExit();
+                        System.IO.File.Delete(tempFile);
+                        Dispatcher.Invoke(() =>
+                        {
+                            if (proc.ExitCode == 0)
+                            {
+                                cbAiVisionModel.Text = modelName;
+                                MessageBoxX.Show($"模型「{modelName}」匯入成功。", "匯入模型");
+                            }
+                            else
+                            {
+                                MessageBoxX.Show($"匯入失敗：{error}", "匯入模型");
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    private static bool IsDiyHotkey(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content))
+            return false;
+        if (content.Contains('\\') || content.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (content.Contains('{') && content.Contains('}'))
+            return true;
+        if (content.StartsWith('^') || content.StartsWith('%') || content.StartsWith('+'))
+            return true;
+        return false;
+    }
+
+    private void RefreshDiyHotkeys()
+    {
+        var items = new List<string>();
+        foreach (LinePutScript.Sub sub in mw.Set["diy"])
+        {
+            if (IsDiyHotkey(sub.Info))
+                items.Add($"{sub.Name}: {sub.Info}");
+        }
+        lbDiyHotkeys.ItemsSource = items;
+        lbDiyHotkeys.Visibility = items.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void BtnSaveHotkey_Click(object? sender, RoutedEventArgs e)
+    {
+        AiAgentEnvironment.SetUser(AiAgentEnvironment.HotkeyPushToTalk, tbAiHotkeyPushToTalk.Text.Trim());
+        var hotkey = tbAiHotkeyPushToTalk.Text.Trim();
+        tbAiHotkeyStatus.Text = string.IsNullOrWhiteSpace(hotkey)
+            ? "無快捷鍵設定"
+            : $"目前註冊：{hotkey}";
+        MessageBoxX.Show("快捷鍵設定已儲存。", "快捷鍵");
+    }
+
+    private void BtnDetectHotkey_Click(object? sender, RoutedEventArgs e)
+    {
+        if (isCapturingHotkey)
+        {
+            isCapturingHotkey = false;
+            btnDetectHotkey.Content = "偵測";
+            tbAiHotkeyPushToTalk.Text = savedHotkeyBeforeCapture;
+            return;
+        }
+
+        savedHotkeyBeforeCapture = tbAiHotkeyPushToTalk.Text;
+        isCapturingHotkey = true;
+        btnDetectHotkey.Content = "取消";
+        tbAiHotkeyPushToTalk.Text = "請按下快捷鍵...";
+        tbAiHotkeyPushToTalk.Focus();
+        e.Handled = true;
+    }
+
+    private void TbAiHotkeyPushToTalk_PreviewKeyDown(object? sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (!isCapturingHotkey) return;
+
+        e.Handled = true;
+
+        if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            isCapturingHotkey = false;
+            btnDetectHotkey.Content = "偵測";
+            tbAiHotkeyPushToTalk.Text = savedHotkeyBeforeCapture;
+            return;
+        }
+
+        var modifiers = AiAgent.HotkeyService.ModifierKeys.None;
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Control) != 0)
+            modifiers |= AiAgent.HotkeyService.ModifierKeys.Control;
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Alt) != 0)
+            modifiers |= AiAgent.HotkeyService.ModifierKeys.Alt;
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Shift) != 0)
+            modifiers |= AiAgent.HotkeyService.ModifierKeys.Shift;
+        if ((System.Windows.Input.Keyboard.Modifiers & System.Windows.Input.ModifierKeys.Windows) != 0)
+            modifiers |= AiAgent.HotkeyService.ModifierKeys.Windows;
+
+        AiAgent.HotkeyService.Keys hotkeyKey;
+        if (e.Key >= System.Windows.Input.Key.A && e.Key <= System.Windows.Input.Key.Z)
+            hotkeyKey = AiAgent.HotkeyService.Keys.A + (int)(e.Key - System.Windows.Input.Key.A);
+        else if (e.Key >= System.Windows.Input.Key.F1 && e.Key <= System.Windows.Input.Key.F12)
+            hotkeyKey = (AiAgent.HotkeyService.Keys)((int)e.Key);
+        else
+            return;
+
+        if (modifiers == AiAgent.HotkeyService.ModifierKeys.None)
+        {
+            tbAiHotkeyPushToTalk.Text = "請至少按住一個修飾鍵 (Ctrl/Alt/Shift/Win)";
+            return;
+        }
+
+        tbAiHotkeyPushToTalk.Text = AiAgent.HotkeyService.Format(modifiers, hotkeyKey);
+        isCapturingHotkey = false;
+        btnDetectHotkey.Content = "偵測";
     }
 }

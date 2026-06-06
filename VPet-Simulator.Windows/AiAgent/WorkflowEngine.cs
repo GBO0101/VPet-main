@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using VPet_Simulator.Windows.Interface;
 
 namespace VPet_Simulator.Windows.AiAgent;
@@ -17,17 +19,19 @@ internal sealed class WorkflowEngine
     private readonly CalendarReminderService reminderService;
     private readonly AiAgentPetStatusBuilder petStatusBuilder;
     private readonly PomodoroService pomodoroService;
+    private readonly SemaphoreSlim? _busySemaphore;
     private List<WorkflowDefinition> workflows = new();
     private DateTime lastScheduleCheck = DateTime.MinValue;
     private CancellationTokenSource? workflowCts;
     private readonly object syncLock = new();
 
-    public WorkflowEngine(IMainWindow mw, CalendarReminderService reminderService, AiAgentPetStatusBuilder petStatusBuilder, PomodoroService pomodoroService)
+    public WorkflowEngine(IMainWindow mw, CalendarReminderService reminderService, AiAgentPetStatusBuilder petStatusBuilder, PomodoroService pomodoroService, SemaphoreSlim? busySemaphore = null)
     {
         this.mw = mw;
         this.reminderService = reminderService;
         this.petStatusBuilder = petStatusBuilder;
         this.pomodoroService = pomodoroService;
+        _busySemaphore = busySemaphore;
         Reload();
     }
 
@@ -41,37 +45,37 @@ internal sealed class WorkflowEngine
 
     public event Action<string, string>? WorkflowExecuted;
 
-    public bool TryMatchVoice(string text)
+    public bool TryMatchInput(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
-            WorkflowLogger.Log("[TryMatchVoice] 語音文字為空，跳過");
+            WorkflowLogger.Log("[TryMatchInput] 輸入為空，跳過");
             return false;
         }
 
-        WorkflowLogger.Log($"[TryMatchVoice] 檢查語音觸發: \"{text}\"");
+        WorkflowLogger.Log($"[TryMatchInput] 檢查輸入觸發: \"{text}\"");
 
         lock (syncLock)
         {
             foreach (var w in workflows)
             {
-                if (!w.Enabled || w.Trigger.Type != WorkflowTriggerType.Voice)
+                if (!w.Enabled || w.Trigger.Type != WorkflowTriggerType.Input)
                     continue;
-                if (string.IsNullOrWhiteSpace(w.Trigger.VoiceCommand))
+                if (string.IsNullOrWhiteSpace(w.Trigger.InputKeyword))
                     continue;
 
-                var matched = text.Contains(w.Trigger.VoiceCommand, StringComparison.OrdinalIgnoreCase);
-                WorkflowLogger.LogTrigger(w.Name, $"[Voice] \"{text}\" contains \"{w.Trigger.VoiceCommand}\"", matched);
+                var matched = text.Contains(w.Trigger.InputKeyword, StringComparison.OrdinalIgnoreCase);
+                WorkflowLogger.LogTrigger(w.Name, $"[Input] \"{text}\" contains \"{w.Trigger.InputKeyword}\"", matched);
 
                 if (matched)
                 {
-                    WorkflowLogger.Log($"[TryMatchVoice] ✓ 命中 workflow: {w.Name}");
-                    RunWorkflow(w, $"[Voice] {text}");
+                    WorkflowLogger.Log($"[TryMatchInput] ✓ 命中 workflow: {w.Name}");
+                    RunWorkflow(w, $"[Input] {text}");
                     return true;
                 }
             }
         }
-        WorkflowLogger.Log("[TryMatchVoice] 未命中任何語音 workflow");
+        WorkflowLogger.Log("[TryMatchInput] 未命中任何輸入 workflow");
         return false;
     }
 
@@ -159,75 +163,102 @@ internal sealed class WorkflowEngine
 
     private async Task ExecuteAsync(WorkflowDefinition w, string triggerInfo, CancellationToken cancellationToken = default)
     {
-        WorkflowLogger.Log($"[Execute] 開始執行 workflow: {w.Name} ({triggerInfo}), 動作數={w.Actions.Count}");
+        bool acquired = false;
+        if (_busySemaphore != null)
+            acquired = _busySemaphore.Wait(0);
 
-        for (int i = 0; i < w.Actions.Count; i++)
+        try
         {
-            var action = w.Actions[i];
-            WorkflowLogger.LogAction(w.Name, i, $"{action.Type} (ProgramName={action.ProgramName}, Msg={action.Message}, Delay={action.DelaySeconds}s, Pomodoro={action.PomodoroMinutes}min)");
+            WorkflowLogger.Log($"[Execute] 開始執行 workflow: {w.Name} ({triggerInfo}), 動作數={w.Actions.Count}");
 
-            try
+            for (int i = 0; i < w.Actions.Count; i++)
             {
-                switch (action.Type)
+                var action = w.Actions[i];
+                WorkflowLogger.LogAction(w.Name, i, $"{action.Type} (ProgramName={action.ProgramName}, Msg={action.Message}, Delay={action.DelaySeconds}s, Pomodoro={action.PomodoroMinutes}min)");
+
+                try
                 {
-                    case WorkflowActionType.LaunchProgram:
-                        ExecuteLaunch(action.ProgramName);
-                        break;
-                    case WorkflowActionType.StartPomodoro:
-                        ExecutePomodoro(action.PomodoroMinutes);
-                        break;
-                    case WorkflowActionType.SendMessage:
-                        ExecuteMessage(action.Message);
-                        break;
-                    case WorkflowActionType.Wait:
-                        var delay = Math.Max(1, action.DelaySeconds);
-                        WorkflowLogger.Log($"[Execute] 等待 {delay} 秒...");
-                        await Task.Delay(TimeSpan.FromSeconds(delay), cancellationToken);
-                        break;
+                    switch (action.Type)
+                    {
+                        case WorkflowActionType.LaunchProgram:
+                            ExecuteLaunch(action.ProgramName);
+                            break;
+                        case WorkflowActionType.StartPomodoro:
+                            ExecutePomodoro(action.PomodoroMinutes);
+                            break;
+                        case WorkflowActionType.SendMessage:
+                            ExecuteMessage(action.Message);
+                            break;
+                        case WorkflowActionType.Wait:
+                            var delay = Math.Max(1, action.DelaySeconds);
+                            WorkflowLogger.Log($"[Execute] 等待 {delay} 秒...");
+                            await Task.Delay(TimeSpan.FromSeconds(delay), cancellationToken);
+                            break;
+                        case WorkflowActionType.ShowNotification:
+                            ExecuteNotification(action.NotificationTitle, action.NotificationBody);
+                            break;
+                    }
+                    WorkflowLogger.LogAction(w.Name, i, $"{action.Type} ✓ 完成");
                 }
-                WorkflowLogger.LogAction(w.Name, i, $"{action.Type} ✓ 完成");
+                catch (Exception ex)
+                {
+                    WorkflowLogger.LogError($"[Execute] 動作#{i} 失敗: {action.Type}", ex);
+                }
             }
-            catch (Exception ex)
-            {
-                WorkflowLogger.LogError($"[Execute] 動作#{i} 失敗: {action.Type}", ex);
-            }
-        }
 
-        WorkflowExecuted?.Invoke(w.Name, triggerInfo);
-        WorkflowLogger.Log($"[Execute] ✓ workflow 完成: {w.Name}");
+            WorkflowExecuted?.Invoke(w.Name, triggerInfo);
+            WorkflowLogger.Log($"[Execute] ✓ workflow 完成: {w.Name}");
+        }
+        finally
+        {
+            if (acquired) _busySemaphore?.Release();
+        }
     }
 
     private void ExecuteLaunch(string programName)
     {
-        if (string.IsNullOrWhiteSpace(programName))
-        {
-            WorkflowLogger.Log("[ExecuteLaunch] 程式名稱為空，跳過");
-            return;
-        }
+        programName = (programName ?? "").Trim();
 
-        var shortcuts = shortcutStore.Load();
-        var match = shortcuts.FirstOrDefault(s =>
-            s.Name.Equals(programName, StringComparison.OrdinalIgnoreCase));
-        if (match == null)
+        if (programName.Contains('\\') || programName.Contains('/'))
         {
-            WorkflowLogger.Log($"[ExecuteLaunch] 找不到程式捷徑: {programName}（請先在設定中新增捷徑）");
-            return;
-        }
-
-        WorkflowLogger.Log($"[ExecuteLaunch] 正在開啟: {match.Name} -> {match.Path}");
-        try
-        {
-            Process.Start(new ProcessStartInfo
+            WorkflowLogger.Log($"[ExecuteLaunch] 嘗試開啟檔案路徑: {programName}");
+            try
             {
-                FileName = match.Path,
-                UseShellExecute = true
-            });
-            WorkflowLogger.Log($"[ExecuteLaunch] ✓ 已開啟: {match.Name}");
+                Process.Start(new ProcessStartInfo { FileName = programName, UseShellExecute = true });
+                WorkflowLogger.Log($"[ExecuteLaunch] ✓ 已開啟: {programName}");
+            }
+            catch (Exception ex)
+            {
+                WorkflowLogger.LogError($"[ExecuteLaunch] 開啟失敗: {programName}", ex);
+            }
+            return;
         }
-        catch (Exception ex)
+
+        WorkflowLogger.Log("[ExecuteLaunch] 參數不是檔案路徑，開啟檔案選擇對話框...");
+        Application.Current.Dispatcher.Invoke(() =>
         {
-            WorkflowLogger.LogError($"[ExecuteLaunch] 開啟失敗: {match.Path}", ex);
-        }
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = "選擇要開啟的檔案",
+                CheckFileExists = true
+            };
+            if (dialog.ShowDialog() == true)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo { FileName = dialog.FileName, UseShellExecute = true });
+                    WorkflowLogger.Log($"[ExecuteLaunch] ✓ 已開啟選擇的檔案: {dialog.FileName}");
+                }
+                catch (Exception ex)
+                {
+                    WorkflowLogger.LogError($"[ExecuteLaunch] 開啟選擇的檔案失敗: {dialog.FileName}", ex);
+                }
+            }
+            else
+            {
+                WorkflowLogger.Log("[ExecuteLaunch] 使用者取消選擇檔案");
+            }
+        });
     }
 
     private void ExecutePomodoro(int minutes)
@@ -270,6 +301,31 @@ internal sealed class WorkflowEngine
                 WorkflowLogger.Log("[ExecuteMessage] MainWindow 型別不符");
             }
         });
+    }
+
+    private void ExecuteNotification(string title, string body)
+    {
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(body))
+        {
+            WorkflowLogger.Log("[ExecuteNotification] 標題與內容皆為空，跳過");
+            return;
+        }
+
+        WorkflowLogger.Log($"[ExecuteNotification] 顯示通知: \"{title}\" - \"{body}\"");
+        Application.Current.Dispatcher.InvokeAsync(() =>
+        {
+            var notifyIcon = new System.Windows.Forms.NotifyIcon
+            {
+                Icon = System.Drawing.SystemIcons.Information,
+                Visible = true,
+                BalloonTipTitle = string.IsNullOrWhiteSpace(title) ? "VPet Workflow" : title,
+                BalloonTipText = body,
+                BalloonTipIcon = System.Windows.Forms.ToolTipIcon.Info
+            };
+            notifyIcon.ShowBalloonTip(5000);
+            notifyIcon.Dispose();
+        });
+        WorkflowLogger.Log("[ExecuteNotification] ✓ 通知已顯示");
     }
 
     private static bool MatchCron(string cron, DateTime time)

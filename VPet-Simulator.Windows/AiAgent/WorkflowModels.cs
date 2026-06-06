@@ -3,22 +3,23 @@ using System.Collections.Generic;
 
 namespace VPet_Simulator.Windows.AiAgent;
 
-internal enum WorkflowTriggerType
+public enum WorkflowTriggerType
 {
     Screen,
     Schedule,
-    Voice
+    Input
 }
 
-internal enum WorkflowActionType
+public enum WorkflowActionType
 {
     LaunchProgram,
     StartPomodoro,
     SendMessage,
-    Wait
+    Wait,
+    ShowNotification
 }
 
-internal class WorkflowDefinition
+public class WorkflowDefinition
 {
     public string Name { get; set; } = "";
     public string Description { get; set; } = "";
@@ -27,7 +28,7 @@ internal class WorkflowDefinition
     public List<WorkflowAction> Actions { get; set; } = new();
 }
 
-internal class WorkflowTrigger
+public class WorkflowTrigger
 {
     public WorkflowTriggerType Type { get; set; }
 
@@ -35,10 +36,10 @@ internal class WorkflowTrigger
 
     public string ScheduleCron { get; set; } = "";
 
-    public string VoiceCommand { get; set; } = "";
+    public string InputKeyword { get; set; } = "";
 }
 
-internal class WorkflowAction
+public class WorkflowAction
 {
     public WorkflowActionType Type { get; set; }
 
@@ -49,4 +50,17 @@ internal class WorkflowAction
     public string Message { get; set; } = "";
 
     public int DelaySeconds { get; set; }
+
+    public string NotificationTitle { get; set; } = "";
+    public string NotificationBody { get; set; } = "";
+}
+
+internal class WorkflowDisplayItem
+{
+    public string Name { get; set; } = "";
+    public string TriggerTypeDisplay { get; set; } = "";
+    public string TriggerSummary { get; set; } = "";
+    public bool Enabled { get; set; }
+    public int ActionCount { get; set; }
+    public WorkflowDefinition? Source { get; set; }
 }

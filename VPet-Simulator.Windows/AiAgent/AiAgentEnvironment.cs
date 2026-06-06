@@ -20,9 +20,12 @@ internal static class AiAgentEnvironment
     public const string CwaApiKey = "VPET_CWA_API_KEY";
     public const string DefaultLocation = "VPET_DEFAULT_LOCATION";
     public const string VisionModel = "VPET_VISION_MODEL";
-    public const string FeatureVoice = "VPET_FEATURE_VOICE";
+    public const string FeatureVoiceInput = "VPET_FEATURE_VOICE_INPUT";
+    public const string FeatureVoiceOutput = "VPET_FEATURE_VOICE_OUTPUT";
     public const string FeatureScreenAware = "VPET_FEATURE_SCREEN_AWARE";
     public const string FeatureWorkflow = "VPET_FEATURE_WORKFLOW";
+    public const string ScreenAwareInterval = "VPET_SCREEN_AWARE_INTERVAL";
+    public const string HotkeyPushToTalk = "VPET_HOTKEY_PUSH_TO_TALK";
 
     public static string Provider
     {
@@ -51,7 +54,9 @@ internal static class AiAgentEnvironment
 
     public static void SetUser(string name, string value)
     {
-        Environment.SetEnvironmentVariable(name, string.IsNullOrWhiteSpace(value) ? null : value, EnvironmentVariableTarget.User);
+        var finalValue = string.IsNullOrWhiteSpace(value) ? null : value;
+        Environment.SetEnvironmentVariable(name, finalValue, EnvironmentVariableTarget.User);
+        Environment.SetEnvironmentVariable(name, finalValue);
     }
 
     public static string GetSelectedModel()
