@@ -74,3 +74,4 @@ public class ActivityLog
         return $"[{Time.ToShortTimeString()}] {string.Format(IText.ConverText(("al_" + Type).Translate(), m), Description.Split('|'))}";
     }
 }
+
