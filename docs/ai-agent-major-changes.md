@@ -111,3 +111,4 @@ pipeline：
 - Model catalog：Ollama 與 remote model list JSON 解析。
 - ChatPipeline：完整順序與 final response generation input。
 - 短期記憶：固定 10 筆 history 會在每次生成前提供給模型，下一輪「這個行程」能引用上一輪「下禮拜三聚餐」。
+
