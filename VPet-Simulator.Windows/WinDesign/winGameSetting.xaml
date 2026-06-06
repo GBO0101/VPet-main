@@ -1210,6 +1210,24 @@
                         <TextBlock Margin="14" Background="{x:Null}" TextWrapping="Wrap"
                                 Text="檔案搜尋 skill 會在本機磁碟中依檔名搜尋，最多顯示 30 筆結果，單次搜尋上限 15 秒。這裡只保留功能說明，沒有額外設定。" />
                     </TabItem>
+                    <TabItem Header="功能開關">
+                        <StackPanel Margin="14" Orientation="Vertical">
+                            <TextBlock Text="可在不重啟桌寵的狀態下啟用或關閉各項功能。開關後按「儲存」立即生效。" 
+                                       TextWrapping="Wrap" Margin="0,0,0,14" />
+                            <CheckBox x:Name="cbFeatureVoice" Content="語音辨識與合成 (ASR + TTS)"
+                                      Margin="0,0,0,8" />
+                            <TextBlock Text="按壓麥克風說話、LLM 回應自動朗讀" 
+                                       Margin="24,0,0,14" Foreground="Gray" FontSize="12" />
+                            <CheckBox x:Name="cbFeatureScreenAware" Content="螢幕感知 (Screen Awareness)"
+                                      Margin="0,0,0,8" />
+                            <TextBlock Text="定時截圖分析桌面活動，桌寵主動回應" 
+                                       Margin="24,0,0,14" Foreground="Gray" FontSize="12" />
+                            <CheckBox x:Name="cbFeatureWorkflow" Content="自動化流程 (Workflow)"
+                                      Margin="0,0,0,8" />
+                            <TextBlock Text="語音/排程/螢幕觸發複合動作" 
+                                       Margin="24,0,0,14" Foreground="Gray" FontSize="12" />
+                        </StackPanel>
+                    </TabItem>
                 </TabControl>
             </TabItem>
             <TabItem BorderBrush="{DynamicResource PrimaryDarker}" Header="{ll:Str MOD管理}">

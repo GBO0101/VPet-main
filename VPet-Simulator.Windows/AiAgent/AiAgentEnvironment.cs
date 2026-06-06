@@ -20,6 +20,9 @@ internal static class AiAgentEnvironment
     public const string CwaApiKey = "VPET_CWA_API_KEY";
     public const string DefaultLocation = "VPET_DEFAULT_LOCATION";
     public const string VisionModel = "VPET_VISION_MODEL";
+    public const string FeatureVoice = "VPET_FEATURE_VOICE";
+    public const string FeatureScreenAware = "VPET_FEATURE_SCREEN_AWARE";
+    public const string FeatureWorkflow = "VPET_FEATURE_WORKFLOW";
 
     public static string Provider
     {

@@ -7,9 +7,9 @@ namespace VPet_Simulator.Windows.AiAgent;
 
 internal sealed class ScreenCaptureService
 {
-    public int CaptureWidth { get; set; } = 500;
-    public int CaptureHeight { get; set; } = 400;
+    public int CaptureWidth { get; set; } = 1000;
 
+    public int CaptureHeight { get; set; } = 800;
     public string CaptureAsBase64()
     {
         var cursor = System.Windows.Forms.Cursor.Position;

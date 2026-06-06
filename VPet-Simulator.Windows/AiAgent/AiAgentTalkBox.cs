@@ -37,15 +37,24 @@ internal sealed class AiAgentTalkBox : TalkBox
         workflowEngine.WorkflowExecuted += (name, trigger) =>
             WorkflowLogger.Log($"[Integrate] Workflow 執行完成: {name}, 觸發源: {trigger}");
 
-        voiceService.SpeechRecognized += OnSpeechRecognized;
-        voiceService.RecordingStateChanged += OnRecordingStateChanged;
-
         Task.Run(() =>
         {
             VoiceLogger.Log("[Init] 開始背景初始化...");
-            try { voiceService.InitializeAsr(); } catch (Exception ex) { VoiceLogger.LogError("[Init] InitializeAsr", ex); }
-            try { voiceService.InitializeTts(); } catch (Exception ex) { VoiceLogger.LogError("[Init] InitializeTts", ex); }
-            VoiceLogger.Log($"[Init] 初始化完成, ASR就緒={voiceService.IsAsrReady}, TTS就緒={voiceService.IsTtsReady}");
+            VoiceLogger.Log($"[Init] 功能開關: Voice={FeatureManager.IsVoiceEnabled}, ScreenAware={FeatureManager.IsScreenAwareEnabled}, Workflow={FeatureManager.IsWorkflowEnabled}");
+
+            if (FeatureManager.IsVoiceEnabled)
+            {
+                voiceService.SpeechRecognized += OnSpeechRecognized;
+                voiceService.RecordingStateChanged += OnRecordingStateChanged;
+                try { voiceService.InitializeAsr(); } catch (Exception ex) { VoiceLogger.LogError("[Init] InitializeAsr", ex); }
+                try { voiceService.InitializeTts(); } catch (Exception ex) { VoiceLogger.LogError("[Init] InitializeTts", ex); }
+                VoiceLogger.Log($"[Init] ASR就緒={voiceService.IsAsrReady}, TTS就緒={voiceService.IsTtsReady}");
+            }
+            else
+            {
+                VoiceLogger.Log("[Init] 語音功能已禁用，跳過 ASR/TTS 初始化");
+            }
+
             MainPlugin.MW.Dispatcher.Invoke(() =>
             {
                 btnMic.Content = voiceService.IsAsrReady ? "\uD83C\uDFA4" : "\u274C";
@@ -53,8 +62,15 @@ internal sealed class AiAgentTalkBox : TalkBox
                 VoiceLogger.Log("[Init] UI 按鈕已更新");
             });
 
-            if (screenAnalysis.IsConfigured)
+            if (FeatureManager.IsScreenAwareEnabled && screenAnalysis.IsConfigured)
+            {
+                VoiceLogger.Log("[Init] 螢幕感知功能已啟用，開始啟動");
                 StartScreenAwareness();
+            }
+            else
+            {
+                VoiceLogger.Log($"[Init] 螢幕感知未啟用: Enabled={FeatureManager.IsScreenAwareEnabled}, Configured={screenAnalysis.IsConfigured}");
+            }
         });
     }
 
@@ -65,7 +81,7 @@ internal sealed class AiAgentTalkBox : TalkBox
         Task.Run(async () =>
         {
             ScreenAwareLogger.Log("[ScreenAware] 開始背景螢幕感知");
-            while (true)
+            while (FeatureManager.IsScreenAwareEnabled)
             {
                 await Task.Delay(TimeSpan.FromSeconds(60));
 
@@ -81,7 +97,8 @@ internal sealed class AiAgentTalkBox : TalkBox
                     if (!string.IsNullOrWhiteSpace(description))
                         workflowEngine.TryMatchScreen(description);
 
-                    workflowEngine.CheckSchedule();
+                    if (FeatureManager.IsWorkflowEnabled)
+                        workflowEngine.CheckSchedule();
 
                     if (string.IsNullOrWhiteSpace(description))
                     {
@@ -126,8 +143,9 @@ internal sealed class AiAgentTalkBox : TalkBox
                         {
                             DisplayThinkToSayRnd(proactiveMsg, "AI Agent");
                         });
-                        voiceService.Speak(proactiveMsg);
-                        ScreenAwareLogger.Log($"[Proactive] 已顯示+朗讀: {proactiveMsg}");
+                        if (FeatureManager.IsVoiceEnabled)
+                            voiceService.Speak(proactiveMsg);
+                        ScreenAwareLogger.Log($"[Proactive] 已顯示, TTS={FeatureManager.IsVoiceEnabled}: {proactiveMsg}");
                     }
                 }
                 catch (Exception ex)
@@ -140,13 +158,14 @@ internal sealed class AiAgentTalkBox : TalkBox
 
     public override void OnMicButtonDown()
     {
-        if (voiceService.IsAsrReady)
+        if (FeatureManager.IsVoiceEnabled && voiceService.IsAsrReady)
             Task.Run(() => voiceService.StartRecording());
     }
 
     public override void OnMicButtonUp()
     {
-        Task.Run(() => voiceService.StopRecording());
+        if (FeatureManager.IsVoiceEnabled)
+            Task.Run(() => voiceService.StopRecording());
     }
 
     private void OnSpeechRecognized(object? sender, string text)
@@ -170,7 +189,7 @@ internal sealed class AiAgentTalkBox : TalkBox
     {
         isInConversation = true;
 
-        if (workflowEngine.TryMatchVoice(text))
+        if (FeatureManager.IsWorkflowEnabled && workflowEngine.TryMatchVoice(text))
         {
             WorkflowLogger.Log("[Integrate] 文字/語音被 workflow 攔截，不送 LLM");
             isInConversation = false;
@@ -183,7 +202,8 @@ internal sealed class AiAgentTalkBox : TalkBox
             if (AiAgentCommandRouter.TryHandle(MainPlugin.MW, text, out var commandResponse, pomodoroService))
             {
                 DisplayThinkToSayRnd(commandResponse, APIName);
-                voiceService.Speak(commandResponse);
+                if (FeatureManager.IsVoiceEnabled)
+                    voiceService.Speak(commandResponse);
                 return;
             }
 
@@ -191,13 +211,15 @@ internal sealed class AiAgentTalkBox : TalkBox
             var result = CreatePipeline().RunAsync(text, cts.Token).GetAwaiter().GetResult();
             var response = string.IsNullOrWhiteSpace(result.FinalResponse) ? "\u6211\u73fe\u5728\u9084\u60f3\u4e0d\u5230\u600e\u9ebc\u56de\u7b54\u55b5\u3002" : result.FinalResponse;
             DisplayThinkToSayRnd(response, APIName);
-            voiceService.Speak(response);
+            if (FeatureManager.IsVoiceEnabled)
+                voiceService.Speak(response);
         }
         catch (Exception ex)
         {
             var errorMsg = "\u6211\u7684 AI \u52a9\u624b\u51fa\u932f\u4e86\uff1a" + ex.Message;
             DisplayThinkToSayRnd(errorMsg, APIName);
-            voiceService.Speak(errorMsg);
+            if (FeatureManager.IsVoiceEnabled)
+                voiceService.Speak(errorMsg);
         }
         finally
         {

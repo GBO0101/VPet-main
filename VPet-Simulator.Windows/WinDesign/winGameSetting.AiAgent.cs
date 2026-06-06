@@ -54,6 +54,11 @@ public partial class winGameSetting
         tbAiGoogleClientId.Text = AiAgentEnvironment.Get(AiAgentEnvironment.GoogleClientId);
         dpAiReminderDate.SelectedDate = DateTime.Now.Date;
         tbAiReminderTime.Text = DateTime.Now.AddMinutes(5).ToString("HH:mm");
+
+        cbFeatureVoice.IsChecked = FeatureManager.IsVoiceEnabled;
+        cbFeatureScreenAware.IsChecked = FeatureManager.IsScreenAwareEnabled;
+        cbFeatureWorkflow.IsChecked = FeatureManager.IsWorkflowEnabled;
+
         RefreshAiAgentData();
     }
 
@@ -66,6 +71,10 @@ public partial class winGameSetting
     {
         AiAgentEnvironment.SetUser(AiAgentEnvironment.AiProvider, GetSelectedAiProvider());
         AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaAutoStart, cbAiOllamaAutoStart.IsChecked == false ? "false" : "true");
+
+        FeatureManager.SetVoiceEnabled(cbFeatureVoice.IsChecked == true);
+        FeatureManager.SetScreenAwareEnabled(cbFeatureScreenAware.IsChecked == true);
+        FeatureManager.SetWorkflowEnabled(cbFeatureWorkflow.IsChecked == true);
         AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaUrl, tbAiOllamaUrl.Text.Trim());
         AiAgentEnvironment.SetUser(AiAgentEnvironment.OllamaModel, GetSelectedAiOllamaModel());
         AiAgentEnvironment.SetUser(AiAgentEnvironment.RemoteApiBaseUrl, tbAiRemoteApiBaseUrl.Text.Trim());
