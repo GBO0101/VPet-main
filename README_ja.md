@@ -166,3 +166,4 @@ MOD プロデューサ:  https://github.com/LorisYounger/VPet.ModMaker
 3. `Run` をクリックする。問題がなければ、以下のメッセージが表示されます: `Lack Mod Core, Unable start desktop pet` と表示されます
 4. `Vpet-Simulator.Windows/mklink.bat` を管理者として実行します。これは `mod` フォルダをビルドフォルダにリンクします。
 5. もう一度 `Run` をクリックすると、今度はアプリが実行されます。
+

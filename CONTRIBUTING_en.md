@@ -89,3 +89,4 @@ You **must** inform users of the source of our animation files, and provide a li
 * All of the above authorization information **must** be disclosed.
 * You **must** provide a link to [this page](https://github.com/LorisYounger/VPet).
 * **No** profit should be made with our files.
+

@@ -87,3 +87,4 @@
     * ToolBar 點擊人物時的工具欄
     * MessageBar 人物說話時的對話框
     * WorkTimer 運作計時器
+

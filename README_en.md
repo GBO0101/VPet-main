@@ -166,3 +166,4 @@ You **must** inform users of the source of our animation files, and provide a li
 3. Click on `Run`. If everything is OK, you will get the following message: `Lack Mod Core, Unable start desktop pet`
 4. Run `Vpet-Simulator.Windows/mklink.bat` as administrator. This links the `mod` folder to the build folder.
 5. Click on `Run` again, and this time the app will run.
+
